@@ -1,0 +1,113 @@
+sudo su hadoop
+
+start-dfs.sh
+
+start-yarn.sh
+
+jps
+
+
+hdfs dfs -mkdir -p /3_zadanie/hadoop/input
+
+hdfs dfs -chmod 777 /3_zadanie/hadoop/input
+
+
+hdfs dfs -mkdir -p /3_zadanie/hadoop/output/quarterly_median_close
+hdfs dfs -chmod 777 /3_zadanie/hadoop/output/quarterly_median_close
+
+hdfs dfs -mkdir -p /3_zadanie/hadoop/output/typed_data
+hdfs dfs -chmod 777 /3_zadanie/hadoop/output/typed_data
+
+mkdir -p ~/scripts
+
+
+nano ~/scripts/script.scala
+
+script.scala
+-------------------------------------------------
+
+// Чтение данных из HDFS
+val data = spark.read.option("header", "true")
+    .csv("hdfs://localhost:9000/3_zadanie/hadoop/input/all_stocks_5yr.csv")
+
+// Импорт необходимых библиотек
+import org.apache.spark.sql.functions._
+import org.apache.spark.sql.types._
+import java.time.LocalDate
+
+// Преобразование типов данных
+val dataTyped = data.select(
+    to_date($"date", "yyyy-MM-dd").as("date"),
+    $"open".cast(DoubleType).as("open"),
+    $"high".cast(DoubleType).as("high"),
+    $"low".cast(DoubleType).as("low"),
+    $"close".cast(DoubleType).as("close"),
+    regexp_replace($"volume", ",", "").cast(LongType).as("volume"),
+    $"Name"
+)
+
+// Вычисление среднего значения
+val avgValues = dataTyped.agg(
+    avg($"open").as("avg_open"),
+    avg($"high").as("avg_high"),
+    avg($"low").as("avg_low"),
+    avg($"close").as("avg_close"),
+    avg($"volume").as("avg_volume")
+)
+
+println("Средние значения:")
+avgValues.show()
+
+// Фильтрация данных за последние 3 года
+val maxDate = dataTyped.agg(max($"date")).first().getDate(0)
+val threeYearsAgo = LocalDate.parse(maxDate.toString).minusYears(3)
+
+val filteredData = dataTyped.filter($"date" >= threeYearsAgo.toString)
+
+println(s"Данные за последние 3 года (с $threeYearsAgo):")
+filteredData.show(5)
+
+// Расчет медианной цены закрытия с группировкой по кварталам
+val result = filteredData
+  .withColumn("quarter", quarter($"date"))
+  .withColumn("year", year($"date"))
+  .groupBy($"year", $"quarter")
+  .agg(
+      expr("percentile_approx(close, 0.5)").as("median_close"),
+      avg($"close").as("avg_close")
+  )
+  .orderBy($"year", $"quarter")
+
+println("Медианная цена закрытия по кварталам:")
+result.show()
+
+// Сохранение результата медиан в HDFS (если нужно)
+result.write
+  .option("header", "true")
+  .mode("overwrite")
+  .csv("hdfs://localhost:9000/3_zadanie/hadoop/output/quarterly_median_close")
+
+// Сохранение данных с преобразованными типами в ЛОКАЛЬНУЮ файловую систему
+dataTyped.write
+  .option("header", "true")
+  .mode("overwrite")
+  .csv("file:///home/hadoop/output/typed_data")
+
+println("Результат сохранен в HDFS: /3_zadanie/hadoop/output/quarterly_median_close")
+println("Данные с преобразованными типами сохранены локально: file:///home/hadoop/output/typed_data")
+
+
+println("Результат сохранен в HDFS: /3_zadanie/hadoop/output/quarterly_median_close")
+
+// Для интерактивного продолжения работы
+println("Скрипт завершен. Вы можете продолжить работу в Spark Shell.")
+
+--------------------------------------------------
+
+spark-shell -i /home/hadoop/scripts/script.scala
+
+
+
+
+
+

@@ -1,0 +1,15 @@
+spark-shell
+
+hdfs dfs -copyToLocal /3_zadanie/hadoop/input/all_stocks_5yr.csv /home/hadoop/
+
+
+val data = spark.read.option("header", "true").csv("file:///home/hadoop/all_stocks_5yr.csv")
+
+data.printSchema()
+ 
+  
+
+
+
+
+

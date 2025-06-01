@@ -1,0 +1,65 @@
+drop table if exists aapl_stock_data
+
+CREATE EXTERNAL TABLE aapl_stock_data (
+    date_stock DATE,                
+    open DECIMAL(10,4),       
+    high DECIMAL(10,4),       
+    low DECIMAL(10,4),        
+    close DECIMAL(10,4),      
+    volume BIGINT,            
+    name STRING               
+)
+ROW FORMAT DELIMITED
+FIELDS TERMINATED BY ','
+LOCATION '/user/data/economic_analysis'
+TBLPROPERTIES ("skip.header.line.count"="1");
+
+select * from aapl_stock_data limit 3
+
+-- Средние и экстремальные значения цен за весь период
+SELECT 
+    MIN(open) AS min_open_price,
+    MAX(open) AS max_open_price,
+    AVG(open) AS avg_open_price,
+    MIN(close) AS min_close_price,
+    MAX(close) AS max_close_price,
+    AVG(close) AS avg_close_price,
+    MIN(volume) AS min_volume,
+    MAX(volume) AS max_volume,
+    AVG(volume) AS avg_volume
+FROM aapl_stock_data;
+
+-- Годовая статистика (нужно извлечь год из даты)
+SELECT 
+    YEAR(TO_DATE(date_stock)) AS year,
+    MIN(close) AS min_price,
+    MAX(close) AS max_price,
+    ROUND(AVG(close),2) AS avg_price,
+    SUM(volume) AS total_volume
+FROM aapl_stock_data
+GROUP BY YEAR(TO_DATE(date_stock))
+ORDER BY year;
+
+-- Дни с наибольшей разницей между high и low (волатильность)
+SELECT 
+    date_stock,
+    open,
+    close,
+    high,
+    low,
+    (high - low) AS price_range,
+    ROUND(((high - low) / low * 100),2) AS volatility_percent,
+    volume
+FROM aapl_stock_data
+ORDER BY price_range DESC
+LIMIT 10;
+
+-- Средняя доходность по месяцам B 2016
+SELECT 
+    MONTH(TO_DATE(date_stock)) AS month,
+    ROUND(AVG((close - open) / open * 100),2) AS avg_daily_return_percent
+FROM aapl_stock_data
+WHERE YEAR(TO_DATE(date_stock)) = 2016
+GROUP BY MONTH(TO_DATE(date_stock))
+ORDER BY month;
+
